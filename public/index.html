@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AudioConv — Konverter Audio</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0a; --card:#161616; --card2:#1f1f1f; --border:#2c2c2c;
+    --text:#ffffff; --muted:#9a9a9a; --accent:#f5f5f5;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       min-height:100vh;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom)}
+  header{display:flex;justify-content:space-between;align-items:center;padding:18px 0;border-bottom:1px solid var(--border)}
+  .logo{font-weight:800;font-size:20px;letter-spacing:.5px}
+  .quota{background:var(--card2);border:1px solid var(--border);padding:6px 12px;border-radius:999px;font-size:13px;color:var(--muted)}
+  main{max-width:520px;margin:0 auto;padding:28px 0}
+  h1{font-size:26px;line-height:1.25;margin-bottom:8px}
+  p.sub{color:var(--muted);font-size:14px;margin-bottom:24px;line-height:1.5}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px}
+  .drop{border:2px dashed #3a3a3a;border-radius:14px;padding:28px 16px;text-align:center;cursor:pointer;color:var(--muted);transition:.2s;display:block}
+  .drop:hover,.drop.over{border-color:#fff;color:#fff;background:var(--card2)}
+  .drop input{display:none}
+  label{display:block;font-size:13px;color:var(--muted);margin:14px 0 6px}
+  input[type=range]{width:100%}
+  select{width:100%;background:var(--card2);color:#fff;border:1px solid var(--border);border-radius:10px;padding:12px;font-size:15px}
+  .btn{width:100%;margin-top:18px;background:#fff;color:#0a0a0a;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:700;cursor:pointer}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:#fff;border:1px solid var(--border)}
+  .file{font-size:14px;word-break:break-all;color:#ddd}
+  .status{font-size:13px;color:var(--muted);margin-top:10px;min-height:18px}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;padding:20px}
+  .modal.show{display:flex}
+  .modal .card{max-width:400px;width:100%;background:#111;text-align:center}
+  .price{font-size:34px;font-weight:800;margin:10px 0}
+  ul.perks{list-style:none;text-align:left;color:var(--muted);font-size:14px;margin:14px 0;line-height:1.9}
+  ul.perks li::before{content:"✓  ";color:#fff}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">AUDIO<span style="color:var(--muted)">CONV</span></div>
+  <div class="quota" id="quotaBadge">Sisa gratis: 3</div>
+</header>
+
+<main>
+  <h1>Konverter Audio Online</h1>
+  <p class="sub">Ubah format file audio milik Anda. File diproses langsung di perangkat Anda dan tidak disimpan di server.</p>
+
+  <div class="card">
+    <label for="fileIn" class="drop" id="drop">
+      <div style="font-size:30px">⤒</div>
+      <div>Ketuk untuk pilih file audio</div>
+      <div style="font-size:12px;margin-top:6px">MP3, WAV, M4A, OGG — maks. 25 MB</div>
+      <input type="file" id="fileIn" accept="audio/*">
+    </label>
+    <div class="file" id="fileName" style="margin-top:12px"></div>
+
+    <label for="format">Format output</label>
+    <select id="format">
+      <option value="mp3">MP3</option>
+      <option value="wav">WAV</option>
+    </select>
+
+    <label for="bitrate">Bitrate MP3: <span id="brVal">192</span> kbps</label>
+    <input type="range" id="bitrate" min="64" max="320" step="32" value="192">
+
+    <button class="btn" id="convertBtn" disabled>Konversi</button>
+    <div class="status" id="status"></div>
+  </div>
+</main>
+
+<div class="modal" id="paywall">
+  <div class="card">
+    <div style="color:var(--muted);font-size:13px">KUOTA GRATIS HABIS</div>
+    <h2 style="margin:8px 0">Buka Akses Premium</h2>
+    <div class="price">Rp 20.000</div>
+    <ul class="perks">
+      <li>Konversi tanpa batas selama 30 hari</li>
+      <li>Format MP3 bitrate hingga 320 kbps</li>
+      <li>Tanpa iklan</li>
+    </ul>
+    <button class="btn" id="payBtn">Bayar dengan QRIS / E-Wallet</button>
+    <button class="btn ghost" id="closeModal">Nanti saja</button>
+  </div>
+</div>
+
+<!-- Ganti data-client-key dengan Client Key Sandbox Anda -->
+<script src="https://app.sandbox.midtrans.com/snap/snap.js" data-client-key="GANTI_CLIENT_KEY_ANDA"></script>
+
+<script>
+const FREE_LIMIT = 3;
+const API = "";
+
+function getDeviceId(){
+  let id = localStorage.getItem("deviceId");
+  if(!id){ id = crypto.randomUUID(); localStorage.setItem("deviceId", id); }
+  return id;
+}
+const deviceId = getDeviceId();
+let state = { used: 0, paid: false };
+let currentFile = null;
+
+async function loadQuota(){
+  try{
+    const r = await fetch(`${API}/api/quota?deviceId=${deviceId}`);
+    state = await r.json();
+  }catch(e){
+    state.used = +(localStorage.getItem("usedLocal")||0);
+  }
+  renderQuota();
+}
+function remaining(){ return state.paid ? Infinity : Math.max(0, FREE_LIMIT - state.used); }
+function renderQuota(){
+  document.getElementById("quotaBadge").textContent =
+    state.paid ? "Premium aktif" : `Sisa gratis: ${remaining()}`;
+  document.getElementById("convertBtn").disabled = !currentFile;
+}
+
+const fileIn = document.getElementById("fileIn");
+const drop = document.getElementById("drop");
+fileIn.addEventListener("change", e => pickFile(e.target.files[0]));
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over")}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over")}));
+drop.addEventListener("drop", e => pickFile(e.dataTransfer.files[0]));
+
+function pickFile(f){
+  if(!f) return;
+  if(f.size > 25*1024*1024){ setStatus("File lebih dari 25 MB."); return; }
+  currentFile = f;
+  document.getElementById("fileName").textContent = f.name;
+  renderQuota();
+  setStatus("");
+}
+document.getElementById("bitrate").addEventListener("input", e=>{
+  document.getElementById("brVal").textContent = e.target.value;
+});
+function setStatus(t){ document.getElementById("status").textContent = t; }
+
+document.getElementById("convertBtn").addEventListener("click", async () => {
+  if(remaining() <= 0){ openPaywall(); return; }
+  const btn = document.getElementById("convertBtn");
+  btn.disabled = true; setStatus("Memproses…");
+  try{
+    const buf = await currentFile.arrayBuffer();
+    const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const audio = await audioCtx.decodeAudioData(buf);
+    const format = document.getElementById("format").value;
+    const blob = format === "wav" ? encodeWav(audio)
+                                  : encodeMp3(audio, +document.getElementById("bitrate").value);
+    await recordUse();
+    download(blob, currentFile.name.replace(/\.[^.]+$/,"") + "." + format);
+    setStatus("Selesai! File terunduh.");
+  }catch(e){
+    setStatus("Gagal memproses file. Pastikan formatnya didukung.");
+  }finally{ btn.disabled = false; }
+});
+
+async function recordUse(){
+  if(state.paid) return;
+  try{
+    const r = await fetch(`${API}/api/use`,{method:"POST",headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({deviceId})});
+    state = await r.json();
+  }catch(e){
+    state.used++; localStorage.setItem("usedLocal", state.used);
+  }
+  renderQuota();
+  if(!state.paid && remaining() === 0) setTimeout(openPaywall, 800);
+}
+
+function download(blob, name){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+}
+
+function encodeWav(audio){
+  const ch = audio.numberOfChannels, len = audio.length*ch*2+44;
+  const view = new DataView(new ArrayBuffer(len));
+  const w = (o,s)=>{for(let i=0;i<s.length;i++) view.setUint8(o+i,s.charCodeAt(i))};
+  w(0,"RIFF"); view.setUint32(4,len-8,true); w(8,"WAVE"); w(12,"fmt ");
+  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,ch,true);
+  view.setUint32(24,audio.sampleRate,true); view.setUint32(28,audio.sampleRate*ch*2,true);
+  view.setUint16(32,ch*2,true); view.setUint16(34,16,true); w(36,"data"); view.setUint32(40,len-44,true);
+  const chans = [...Array(ch)].map((_,i)=>audio.getChannelData(i));
+  let off = 44;
+  for(let i=0;i<audio.length;i++){
+    for(let c=0;c<ch;c++){
+      let s = Math.max(-1,Math.min(1,chans[c][i]));
+      view.setInt16(off, s<0 ? s*0x8000 : s*0x7FFF, true); off+=2;
+    }
+  }
+  return new Blob([view],{type:"audio/wav"});
+}
+
+function encodeMp3(audio, kbps){
+  const enc = new lamejs.Mp3Encoder(Math.min(audio.numberOfChannels,2), audio.sampleRate, kbps);
+  const L = toInt16(audio.getChannelData(0));
+  const R = audio.numberOfChannels>1 ? toInt16(audio.getChannelData(1)) : null;
+  const out = []; const B = 1152;
+  for(let i=0;i<L.length;i+=B){
+    const d = R ? enc.encodeBuffer(L.subarray(i,i+B), R.subarray(i,i+B))
+                : enc.encodeBuffer(L.subarray(i,i+B));
+    if(d.length) out.push(d);
+  }
+  const end = enc.flush(); if(end.length) out.push(end);
+  return new Blob(out,{type:"audio/mpeg"});
+}
+function toInt16(f){
+  const o = new Int16Array(f.length);
+  for(let i=0;i<f.length;i++){ const s=Math.max(-1,Math.min(1,f[i])); o[i]= s<0? s*0x8000 : s*0x7FFF; }
+  return o;
+}
+
+function openPaywall(){ document.getElementById("paywall").classList.add("show"); }
+document.getElementById("closeModal").onclick = () =>
+  document.getElementById("paywall").classList.remove("show");
+
+document.getElementById("payBtn").onclick = async () => {
+  const btn = document.getElementById("payBtn"); btn.disabled = true; btn.textContent = "Memuat…";
+  try{
+    const r = await fetch(`${API}/api/create-payment`,{method:"POST",
+              headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId})});
+    const { token } = await r.json();
+    window.snap.pay(token, {
+      onSuccess: () => { alert("Pembayaran berhasil! Premium aktif."); loadQuota(); },
+      onPending: () => alert("Menunggu pembayaran. Akses aktif otomatis setelah lunas."),
+      onError:   () => alert("Pembayaran gagal, silakan coba lagi."),
+      onClose:   () => {}
+    });
+  }catch(e){ alert("Tidak bisa membuat pembayaran."); }
+  finally{ btn.disabled = false; btn.textContent = "Bayar dengan QRIS / E-Wallet"; }
+};
+
+loadQuota();
+</script>
+</body>
+</html>
