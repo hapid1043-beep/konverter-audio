@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070707">
+<title>AudioConv — Konverter Audio</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<style>
+  :root{
+    --bg:#070707; --panel:#121212; --panel2:#1b1b1b; --line:rgba(255,255,255,.08);
+    --text:#fff; --muted:#8c8c8c; --soft:#cfcfcf;
+    --ease:cubic-bezier(.2,.8,.2,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--text);min-height:100vh;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overflow-x:hidden;-webkit-font-smoothing:antialiased;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+
+  /* ===== Latar animasi ===== */
+  .bg{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+  .blob{position:absolute;border-radius:50%;filter:blur(90px);opacity:.22;animation:float 18s ease-in-out infinite}
+  .b1{width:380px;height:380px;background:#4a4a4a;top:-140px;left:-120px}
+  .b2{width:320px;height:320px;background:#7a7a7a;bottom:-120px;right:-100px;animation-delay:-6s}
+  .b3{width:220px;height:220px;background:#333;top:45%;left:55%;animation-delay:-11s}
+  @keyframes float{
+    0%,100%{transform:translate(0,0) scale(1)}
+    50%{transform:translate(40px,-30px) scale(1.12)}
+  }
+  .grain{position:fixed;inset:0;z-index:-1;opacity:.04;pointer-events:none;
+    background-image:radial-gradient(#fff 1px,transparent 1px);background-size:4px 4px}
+
+  /* ===== Header ===== */
+  header{
+    max-width:560px;margin:0 auto;padding:18px 20px;
+    display:flex;justify-content:space-between;align-items:center;
+    animation:fadeDown .6s var(--ease) both;
+  }
+  .logo{font-weight:800;font-size:20px;letter-spacing:.5px}
+  .logo span{color:var(--muted);font-weight:300}
+  .quota{
+    font-size:13px;color:var(--soft);padding:7px 14px;border-radius:999px;
+    background:rgba(255,255,255,.05);border:1px solid var(--line);
+    transition:all .4s var(--ease);
+  }
+  .quota.warn{color:#fff;border-color:rgba(255,255,255,.35);animation:pulse 1.6s infinite}
+  .quota.premium{
+    color:#0a0a0a;background:linear-gradient(120deg,#fff,#bdbdbd,#fff);background-size:200% 100%;
+    border-color:transparent;animation:shine 3s linear infinite;font-weight:600
+  }
+  @keyframes pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.25)}
+    50%{box-shadow:0 0 0 6px rgba(255,255,255,0)}
+  }
+  @keyframes shine{to{background-position:200% 0}}
+
+  /* ===== Hero ===== */
+  main{max-width:560px;margin:0 auto;padding:12px 20px 40px}
+  .hero{text-align:center;margin:18px 0 26px;animation:fadeUp .8s var(--ease) both}
+  .hero h1{
+    font-size:30px;line-height:1.2;font-weight:800;letter-spacing:-.3px;
+    background:linear-gradient(180deg,#fff 40%,#7d7d7d);-webkit-background-clip:text;background-clip:text;color:transparent
+  }
+  .hero p{color:var(--muted);font-size:14px;margin-top:10px;line-height:1.6}
+
+  /* ===== Card ===== */
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);margin-bottom:16px;
+    animation:fadeUp .8s var(--ease) .15s both;
+  }
+
+  /* Dropzone */
+  .drop{
+    display:block;position:relative;cursor:pointer;text-align:center;
+    border:1.5px dashed #343434;border-radius:18px;padding:34px 16px;color:var(--muted);
+    background:linear-gradient(180deg,rgba(255,255,255,.02),transparent);
+    transition:transform .3s var(--ease),border-color .3s,background .3s,color .3s;
+  }
+  .drop:hover{border-color:#777;color:#fff}
+  .drop.over{border-color:#fff;color:#fff;transform:scale(1.02);background:rgba(255,255,255,.05)}
+  .drop input{display:none}
+  .drop-icon{
+    width:58px;height:58px;margin:0 auto 14px;border-radius:50%;
+    display:grid;place-items:center;background:#1f1f1f;border:1px solid var(--line);
+    animation:bob 3s ease-in-out infinite;
+  }
+  .drop-icon svg{width:24px;height:24px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .drop-title{color:#fff;font-weight:600;font-size:15px}
+  .drop-sub{font-size:12px;margin-top:6px}
+  @keyframes bob{
+    0%,100%{transform:translateY(0)}
+    50%{transform:translateY(-6px)}
+  }
+
+  /* File chip */
+  .chip{
+    display:none;align-items:center;gap:12px;margin-top:14px;padding:12px 14px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:14px;
+    animation:fadeUp .45s var(--ease) both;
+  }
+  .chip.show{display:flex}
+  .chip-icon{
+    width:36px;height:36px;border-radius:10px;background:#fff;color:#000;
+    display:grid;place-items:center;font-weight:800;font-size:12px;flex-shrink:0
+  }
+  .chip-info{flex:1;min-width:0}
+  .chip-name{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chip-size{font-size:12px;color:var(--muted);margin-top:2px}
+  .chip-x{
+    background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;
+    padding:4px 8px;border-radius:8px;transition:color .2s,background .2s
+  }
+  .chip-x:hover{color:#fff;background:rgba(255,255,255,.06)}
+
+  /* Label & kontrol */
+  .label{display:block;font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:22px 0 10px}
+
+  .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:4px;position:relative}
+  .seg button{
+    position:relative;z-index:1;background:none;border:none;color:var(--muted);
+    padding:11px;font-size:15px;font-weight:600;cursor:pointer;border-radius:10px;transition:color .3s
+  }
+  .seg button.active{color:#000}
+  .seg-thumb{
+    position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);
+    background:#fff;border-radius:10px;transition:transform .45s var(--ease);
+  }
+  .seg.wav .seg-thumb{transform:translateX(100%)}
+
+  .bitrate-row{overflow:hidden;transition:max-height .4s var(--ease),opacity .3s,margin .3s;max-height:90px;opacity:1}
+  .bitrate-row.hide{max-height:0;opacity:0;margin:0}
+  .bitrate-head{display:flex;justify-content:space-between;font-size:13px;color:var(--soft);margin-bottom:6px}
+  .bitrate-head b{color:#fff;font-weight:600}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:6px;outline:none;
+    background:linear-gradient(90deg,#fff var(--p,50%),#2a2a2a var(--p,50%));cursor:pointer
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#fff;
+    box-shadow:0 0 0 4px rgba(255,255,255,.12);transition:transform .2s
+  }
+  input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
+
+  /* Gelombang saat memproses */
+  .wave{display:none;justify-content:center;align-items:center;gap:5px;height:40px;margin-top:16px}
+  .wave.on{display:flex}
+  .wave span{width:5px;height:10px;border-radius:4px;background:#fff;animation:bar 1s ease-in-out infinite}
+  .wave span:nth-child(2){animation-delay:.12s}
+  .wave span:nth-child(3){animation-delay:.24s}
+  .wave span:nth-child(4){animation-delay:.36s}
+  .wave span:nth-child(5){animation-delay:.48s}
+  .wave span:nth-child(6){animation-delay:.6s}
+  .wave span:nth-child(7){animation-delay:.72s}
+  @keyframes bar{
+    0%,100%{height:8px;opacity:.4}
+    50%{height:36px;opacity:1}
+  }
+
+  /* Tombol */
+  .btn{
+    position:relative;overflow:hidden;width:100%;margin-top:22px;
+    background:#fff;color:#0a0a0a;border:none;border-radius:14px;padding:15px;
+    font-size:16px;font-weight:700;cursor:pointer;
+    transition:transform .2s var(--ease),box-shadow .3s,opacity .3s;
+  }
+  .btn::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(120deg,transparent 30%,rgba(0,0,0,.08),transparent 70%);
+    transform:translateX(-100%);
+  }
+  .btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 32px rgba(255,255,255,.14)}
+  .btn:hover:not(:disabled)::after{animation:sheen .9s var(--ease)}
+  .btn:active:not(:disabled){transform:scale(.98)}
+  .btn:disabled{opacity:.35;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:#fff;border:1px solid var(--line);margin-top:10px}
+  .btn.ghost:hover:not(:disabled){box-shadow:none;background:rgba(255,255,255,.04)}
+  @keyframes sheen{to{transform:translateX(100%)}}
+
+  .note{font-size:12px;color:var(--muted);text-align:center;margin-top:14px;line-height:1.6}
+
+  /* Cara kerja */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
+  .step{
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 12px;text-align:center;
+    animation:fadeUp .8s var(--ease) both;transition:transform .3s var(--ease),border-color .3s;
+  }
+  .step:nth-child(1){animation-delay:.3s}
+  .step:nth-child(2){animation-delay:.4s}
+  .step:nth-child(3){animation-delay:.5s}
+  .step:hover{transform:translateY(-4px);border-color:#444}
+  .step i{font-style:normal;display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .step b{font-size:13px;font-weight:600}
+
+  /* ===== Modal paywall ===== */
+  .modal{
+    position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    display:flex;align-items:center;justify-content:center;padding:20px;z-index:50;
+    opacity:0;pointer-events:none;transition:opacity .35s var(--ease);
+  }
+  .modal.show{opacity:1;pointer-events:auto}
+  .modal-card{
+    width:100%;max-width:380px;background:#101010;border:1px solid var(--line);border-radius:24px;
+    padding:28px 24px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.7);
+    transform:translateY(30px) scale(.94);transition:transform .45s var(--ease);
+  }
+  .modal.show .modal-card{transform:translateY(0) scale(1)}
+  .tag{font-size:11px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
+  .modal h2{font-size:22px;margin:10px 0 4px}
+  .price{
+    font-size:40px;font-weight:800;margin:14px 0 4px;
+    background:linear-gradient(180deg,#fff,#8a8a8a);-webkit-background-clip:text;background-clip:text;color:transparent
+  }
+  .price small{font-size:14px;color:var(--muted);-webkit-text-fill-color:var(--muted)}
+  ul.perks{list-style:none;text-align:left;color:var(--soft);font-size:14px;margin:18px 0 6px;line-height:2}
+  ul.perks li{opacity:0;transform:translateX(-8px);animation:slideIn .4s var(--ease) forwards}
+  ul.perks li:nth-child(1){animation-delay:.15s}
+  ul.perks li:nth-child(2){animation-delay:.25s}
+  ul.perks li:nth-child(3){animation-delay:.35s}
+  ul.perks li::before{content:"✓";color:#fff;font-weight:700;margin-right:10px}
+  @keyframes slideIn{to{opacity:1;transform:none}}
+
+  /* ===== Toast ===== */
+  #toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:10px;width:calc(100% - 40px);max-width:420px;align-items:center}
+  .toast{
+    background:#1a1a1a;border:1px solid var(--line);color:#fff;font-size:14px;padding:12px 18px;border-radius:14px;
+    box-shadow:0 12px 36px rgba(0,0,0,.6);animation:toastIn .45s var(--ease) both;text-align:center;max-width:100%
+  }
+  .toast.ok{border-color:rgba(255,255,255,.35)}
+  .toast.err{border-color:#555;color:#ddd}
+  .toast.out{animation:toastOut .3s ease forwards}
+  @keyframes toastIn{from{opacity:0;transform:translateY(20px) scale(.96)}to{opacity:1;transform:none}}
+  @keyframes toastOut{to{opacity:0;transform:translateY(12px)}}
+
+  /* ===== Animasi umum ===== */
+  @keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+  @keyframes fadeDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}
+
+  footer{text-align:center;color:#555;font-size:12px;padding:0 20px 28px;max-width:560px;margin:0 auto}
+
+  @media (max-width:420px){
+    .hero h1{font-size:26px}
+    .steps{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  }
+</style>
+</head>
+<body>
+<div class="bg"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+<div class="grain"></div>
+
+<header>
+  <div class="logo">AUDIO<span>CONV</span></div>
+  <div class="quota" id="quotaBadge">Sisa gratis: 3</div>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>Konverter Audio<br>Online</h1>
+    <p>Ubah format file audio milik Anda. Diproses langsung di perangkat Anda, tanpa disimpan di server.</p>
+  </section>
+
+  <div class="card">
+    <label for="fileIn" class="drop" id="drop">
+      <div class="drop-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 20h16"/></svg>
+      </div>
+      <div class="drop-title">Ketuk untuk pilih file audio</div>
+      <div class="drop-sub">atau seret file ke sini · MP3, WAV, M4A, OGG · maks. 25 MB</div>
+      <input type="file" id="fileIn" accept="audio/*">
+    </label>
+
+    <div class="chip" id="chip">
+      <div class="chip-icon" id="chipExt">AUD</div>
+      <div class="chip-info">
+        <div class="chip-name" id="chipName"></div>
+        <div class="chip-size" id="chipSize"></div>
+      </div>
+      <button class="chip-x" id="clearBtn" title="Hapus file">×</button>
+    </div>
+
+    <span class="label">Format output</span>
+    <div class="seg" id="seg">
+      <div class="seg-thumb"></div>
+      <button class="active" data-fmt="mp3">MP3</button>
+      <button data-fmt="wav">WAV</button>
+    </div>
+
+    <div class="bitrate-row" id="bitrateRow">
+      <span class="label">Kualitas MP3</span>
+      <div class="bitrate-head"><span>Bitrate</span><b><span id="brVal">192</span> kbps</b></div>
+      <input type="range" id="bitrate" min="64" max="320" step="32" value="192">
+    </div>
+
+    <div class="wave" id="wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+
+    <button class="btn" id="convertBtn" disabled>Konversi sekarang</button>
+  </div>
+
+  <div class="steps">
+    <div class="step"><i>01</i><b>Pilih file</b></div>
+    <div class="step"><i>02</i><b>Atur format</b></div>
+    <div class="step"><i>03</i><b>Unduh hasil</b></div>
+  </div>
+</main>
+
+<footer>
+  Hanya gunakan untuk file yang Anda miliki haknya. Dengan menggunakan layanan ini, Anda setuju dengan ketentuan penggunaan.
+</footer>
+
+<div class="modal" id="paywall">
+  <div class="modal-card">
+    <div class="tag">Kuota gratis habis</div>
+    <h2>Buka Akses Premium</h2>
+    <div class="price">Rp 20.000 <small>/ 30 hari</small></div>
+    <ul class="perks">
+      <li>Konversi tanpa batas selama 30 hari</li>
+      <li>MP3 hingga 320 kbps</li>
+      <li>Tanpa iklan</li>
+    </ul>
+    <button class="btn" id="payBtn">Bayar dengan QRIS / E-Wallet</button>
+    <button class="btn ghost" id="closeModal">Nanti saja</button>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+const FREE_LIMIT = 3;
+const MAX_BYTES = 25 * 1024 * 1024;
+const $ = id => document.getElementById(id);
+
+const deviceId = (() => {
+  let id = localStorage.getItem("deviceId");
+  if (!id) { id = crypto.randomUUID(); localStorage.setItem("deviceId", id); }
+  return id;
+})();
+
+let state = { used: 0, paid: false };
+let currentFile = null;
+let fmt = "mp3";
+let busy = false;
+
+/* ===== Kuota ===== */
+async function loadQuota() {
+  try {
+    const r = await fetch(`/api/quota?deviceId=${deviceId}`);
+    state = await r.json();
+  } catch (e) {
+    state.used = +(localStorage.getItem("usedLocal") || 0);
+  }
+  renderQuota();
+}
+function remaining() { return state.paid ? Infinity : Math.max(0, FREE_LIMIT - state.used); }
+
+function renderQuota() {
+  const badge = $("quotaBadge");
+  if (state.paid) {
+    badge.textContent = "Premium aktif";
+    badge.className = "quota premium";
+  } else {
+    const left = remaining();
+    badge.textContent = `Sisa gratis: ${left}`;
+    badge.className = "quota" + (left <= 1 ? " warn" : "");
+  }
+  $("convertBtn").disabled = !currentFile || busy;
+}
+
+/* ===== Notifikasi ===== */
+function toast(msg, type = "") {
+  const t = document.createElement("div");
+  t.className = "toast " + type;
+  t.textContent = msg;
+  $("toasts").appendChild(t);
+  setTimeout(() => {
+    t.classList.add("out");
+    setTimeout(() => t.remove(), 300);
+  }, 3800);
+}
+
+/* ===== Pilih file ===== */
+function formatBytes(b) {
+  if (b < 1024) return b + " B";
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+  return (b / 1024 / 1024).toFixed(2) + " MB";
+}
+
+function pickFile(f) {
+  if (!f) return;
+  if (f.size > MAX_BYTES) { toast("File lebih dari 25 MB.", "err"); return; }
+  currentFile = f;
+  const ext = (f.name.split(".").pop() || "AUD").toUpperCase().slice(0, 4);
+  $("chipExt").textContent = ext;
+  $("chipName").textContent = f.name;
+  $("chipSize").textContent = formatBytes(f.size);
+  $("chip").classList.remove("show");
+  void $("chip").offsetWidth;          // restart animasi
+  $("chip").classList.add("show");
+  renderQuota();
+}
+
+function clearFile() {
+  currentFile = null;
+  $("fileIn").value = "";
+  $("chip").classList.remove("show");
+  renderQuota();
+}
+
+const drop = $("drop");
+$("fileIn").addEventListener("change", e => pickFile(e.target.files[0]));
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => pickFile(e.dataTransfer.files[0]));
+$("clearBtn").addEventListener("click", clearFile);
+
+/* ===== Pengaturan format & bitrate ===== */
+const seg = $("seg");
+seg.querySelectorAll("button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    fmt = btn.dataset.fmt;
+    seg.querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
+    seg.classList.toggle("wav", fmt === "wav");
+    $("bitrateRow").classList.toggle("hide", fmt === "wav");
+  });
+});
+
+function updateRange() {
+  const r = $("bitrate");
+  $("brVal").textContent = r.value;
+  const p = ((r.value - r.min) / (r.max - r.min)) * 100;
+  r.style.setProperty("--p", p + "%");
+}
+$("bitrate").addEventListener("input", updateRange);
+updateRange();
+
+/* ===== Proses ===== */
+function setBusy(on) {
+  busy = on;
+  $("wave").classList.toggle("on", on);
+  $("convertBtn").textContent = on ? "Memproses…" : "Konversi sekarang";
+  renderQuota();
+}
+
+async function convert() {
+  if (!currentFile || busy) return;
+  if (remaining() <= 0) { openPaywall(); return; }
+  setBusy(true);
+  try {
+    const buf = await currentFile.arrayBuffer();
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const audio = await ctx.decodeAudioData(buf);
+    const blob = fmt === "wav"
+      ? encodeWav(audio)
+      : encodeMp3(audio, +$("bitrate").value);
+    await recordUse();
+    download(blob, currentFile.name.replace(/\.[^.]+$/, "") + "." + fmt);
+    toast("Selesai! File berhasil diunduh.", "ok");
+  } catch (e) {
+    console.error(e);
+    toast("Gagal memproses file. Pastikan formatnya didukung.", "err");
+  } finally {
+    setBusy(false);
+  }
+}
+$("convertBtn").addEventListener("click", convert);
+
+async function recordUse() {
+  if (state.paid) return;
+  try {
+    const r = await fetch("/api/use", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId })
+    });
+    state = await r.json();
+  } catch (e) {
+    state.used++;
+    localStorage.setItem("usedLocal", state.used);
+  }
+  renderQuota();
+  if (!state.paid && remaining() === 0) setTimeout(openPaywall, 900);
+}
+
+function download(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ===== Encoder ===== */
+function encodeWav(audio) {
+  const ch = audio.numberOfChannels, len = audio.length * ch * 2 + 44;
+  const view = new DataView(new
